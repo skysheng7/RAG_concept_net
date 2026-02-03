@@ -78,6 +78,8 @@ touch .env
 
 ```
 GEMINI_API_KEY=<your_gemini_api_key_here>
+export LANGSMITH_TRACING="true"
+export LANGSMITH_API_KEY=<your_langsmith_api_key_here>
 ```
 
 1. Obtain API keys:
