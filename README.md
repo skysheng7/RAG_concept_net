@@ -39,9 +39,6 @@ RAG_concept_net/
 
 ## Installation
 
-<details>
-<summary>Click to expand</summary>
-
 1. Clone this repository:
 
 ```bash
@@ -66,8 +63,6 @@ For exact reproducibility across different operating systems:
 conda-lock install --name rag conda-lock.yml
 conda activate rag
 ```
-
-</details>
 
 ## Setup
 
