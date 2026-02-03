@@ -66,9 +66,6 @@ conda activate rag
 
 ## Setup
 
-<details>
-<summary>Click to expand</summary>
-
 ### API Key Configuration
 
 1. Create a `.env` file in the project root directory using command line:
