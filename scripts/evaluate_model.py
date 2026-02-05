@@ -1,6 +1,6 @@
 import pandas as pd
 
-def evaluate_model(df, answer_generation_function, client, debugging=False):
+def evaluate_model(df, answer_generation_function, client, debugging=False, vector_store=None, k=1):
     """
     Evaluates the model on a given DataFrame of questions.
     Args:
@@ -24,13 +24,20 @@ def evaluate_model(df, answer_generation_function, client, debugging=False):
         correct_choice = converted_choices[correct_choice]
         correct = False
         subject = row['subject']
+        
+        # Check if function name contains "rag" to pass additional parameters
+        if "rag" in answer_generation_function.__name__.lower():
+            kwargs = {"client": client, "vector_store": vector_store, "k": k}
+        else:
+            kwargs = {"client": client}
+        
         try:
-            model_answer = answer_generation_function(question, choices, client=client)
+            model_answer = answer_generation_function(question, choices, **kwargs)
 
         except:
             #try again in case of an error
             try:
-                model_answer = answer_generation_function(question, choices, client=client)
+                model_answer = answer_generation_function(question, choices, **kwargs)
             except:
                 model_answer = ("Error", "Error")
 
