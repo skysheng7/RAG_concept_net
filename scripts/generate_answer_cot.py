@@ -16,7 +16,7 @@ def generate_answer_cot(question, choices, client):
     prompt = (
         f"Question: {question}\n\n"
         f"Choices:\n{formatted_choices}\n\n"
-        "Reason through the question step-by-step limiting yourself to 2000 words, then provide your final answer as one of the letters A, B, C, or D."
+        "Reason through the question step-by-step then provide your final answer as one of the letters A, B, C, or D. Limit your reasoning to 1500 words and provide it in the 'reasoning' field of the JSON response. Your final answer should be in the 'answer' field."
     )
 
     # Use JSON mode to guarantee a parseable structure
@@ -33,7 +33,7 @@ def generate_answer_cot(question, choices, client):
                 },
                 "required": ["reasoning", "answer"]
             },
-            "max_output_tokens": 5096,
+            "max_output_tokens": 10000,
             "temperature": 0.1, # Low temperature for factual MMLU tasks
         }
     )
