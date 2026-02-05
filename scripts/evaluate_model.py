@@ -48,6 +48,7 @@ def evaluate_model(df, answer_generation_function, client, debugging=False, vect
         results_df = pd.concat([results_df, pd.DataFrame({
             'question': [question],
             'model_answer': [model_answer[0]],
+            'model_reasoning': [model_answer[1]],
             'correct_answer': [correct_choice],
             'correct': [correct],
             'subject': [subject]
