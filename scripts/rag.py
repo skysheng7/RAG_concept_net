@@ -42,13 +42,12 @@ def split_text(docs, chunk_size=2000, chunk_overlap=200, add_start_index=True):
     return all_splits
 
 
-def create_vector_store(all_splits, batch_size=300, delay_seconds=2):
+def create_vector_store(all_splits, batch_size=300):
     """
     Create a vector store with rate limiting to avoid quota exhaustion.
     Args:
         all_splits (list): List of document splits to embed
         batch_size (int): Number of documents to process per batch
-        delay_seconds (float): Delay between batches in seconds
     Returns:
         tuple: (vector_store, ids)
     """
@@ -65,55 +64,52 @@ def create_vector_store(all_splits, batch_size=300, delay_seconds=2):
     )
     # instantiate vector store using the embeddings
     vector_store = InMemoryVectorStore(embeddings)
-
-    # Process documents in batches to respect rate limits
-    all_ids = []
-    total_batches = (len(all_splits) + batch_size - 1) // batch_size
-
-    print(f"Processing {len(all_splits)} documents in {total_batches} batches...")
-
-    for i in range(0, len(all_splits), batch_size):
-        batch = all_splits[i : i + batch_size]
-        batch_num = i // batch_size + 1
-
-        print(
-            f"Processing batch {batch_num}/{total_batches} ({len(batch)} documents)..."
-        )
-
-        try:
-            ids = vector_store.add_documents(documents=batch)
-            all_ids.extend(ids)
-            print(f"✓ Batch {batch_num} completed successfully")
-
-            # Add delay between batches to avoid rate limiting (except for the last batch)
-            if i + batch_size < len(all_splits):
-                print(f"Waiting {delay_seconds}s before next batch...")
-                time.sleep(delay_seconds)
-
+    
+    # count the total number of splits
+    total_splits = len(all_splits)
+    cur_split = 0
+    ids = []
+    print(f"Total splits: {total_splits}")
+    
+    while cur_split < total_splits:
+        if (cur_split + batch_size) >= total_splits:
+            batch = all_splits[cur_split:]
+            print(f"Last batch!")
+        else:
+            batch = all_splits[cur_split: cur_split+batch_size]
+            print(f"Processing {cur_split} to {cur_split+batch_size}")
+        
+        try: 
+            cur_ids = vector_store.add_documents(documents=batch)
+            ids.extend(cur_ids)
         except Exception as e:
-            print(f"✗ Error in batch {batch_num}: {e}")
-            # If rate limited, wait longer and retry
             if "429" in str(e) or "quota" in str(e).lower():
-                print("Rate limit hit. Waiting 20 seconds before retrying...")
+                print("Rate limit hit, waiting 20 seconds before retrying...")
                 time.sleep(20)
-                # Retry this batch
-                try:
-                    ids = vector_store.add_documents(documents=batch)
-                    all_ids.extend(ids)
-                    print(f"✓ Batch {batch_num} completed on retry")
-                except Exception as retry_error:
-                    print(f"✗ Retry failed: {retry_error}")
-                    raise
-            else:
-                raise
+                
+                cur_ids = vector_store.add_documents(documents=batch)
+                ids.extend(cur_ids)
+            
+        cur_split = cur_split + batch_size
+    
+    return vector_store, ids
+    
+    
+def build_retriver(vector_store, queries, k = 1):
+    """
+    Build a retriever for the vector store.
 
-    return vector_store, all_ids
+    Args:
+        vector_store (InMemoryVectorStore): The vector store to build the retriever from
+        queries (list): The queries to build the retriever from
+        k (int, optional): The number of most similar documents to return. Defaults to 1.
 
-
-def build_retriver(vector_store, queries):
+    Returns:
+        list: The retrieved documents
+    """
     retriever = vector_store.as_retriever(
         search_type="similarity",
-        search_kwargs={"k": 1},
+        search_kwargs={"k": k}, # only include the top 1 most similar document
     )
 
     retrived_docs = retriever.batch(
@@ -122,13 +118,16 @@ def build_retriver(vector_store, queries):
 
     return retrived_docs
 
+def rag_pipeline(file_path, chunk_size=2000, chunk_overlap=200, add_start_index=True, batch_processing_size=300):
+    docs = load_txt_files(file_path)
+    all_splits = split_text(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=add_start_index)
+    vector_store, ids = create_vector_store(all_splits, batch_size=batch_processing_size)
+    
+    return vector_store, ids
 
 if __name__ == "__main__":
     file_path = "input_data/concept_net.txt"
-    docs = load_txt_files(file_path)
-
-    all_splits = split_text(docs)
-    print(f"Split into {len(all_splits)} chunks")
-
-    vector_store, ids = create_vector_store(all_splits)
-    print(f"\nSuccessfully created vector store with {len(ids)} documents")
+    vector_store, ids = rag_pipeline(file_path, chunk_size=2000, chunk_overlap=200, add_start_index=True, batch_processing_size=700)
+    print(f"Successfully created vector store with {len(ids)} documents")
+    
+    
