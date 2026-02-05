@@ -4,10 +4,13 @@ from rag import build_retriver
 
 def generate_answer_rag(question, choices, client, vector_store, k=1):
     """
-    Generates an answer using chain-of-thought prompting.
+    Generates an answer using RAG.
     Args:
         question (str): The question to answer.
         choices (list): A list of answer choices.
+        client (Client): The Gemini client.
+        vector_store (InMemoryVectorStore): The vector store.
+        k (int): The number of most similar documents to return.
     Returns:
         str: The selected answer choice letter.
         str: The full response from the model for debugging.
