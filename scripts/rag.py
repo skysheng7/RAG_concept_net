@@ -43,7 +43,7 @@ def split_text_by_character(docs, chunk_size=2000, chunk_overlap=200, add_start_
     all_splits = text_splitter.split_documents(docs)
     return all_splits
 
-def split_text_by_sentences(docs, chunk_size=10):
+def split_text_by_sentences(docs, chunk_size=1000):
     """
     Splits a list of documents into chunks.
     Args:
@@ -54,6 +54,15 @@ def split_text_by_sentences(docs, chunk_size=10):
     Returns:
         list: A list of chunks.
     """
+    # Ensure NLTK punkt_tab data is available
+    try:
+        import nltk
+        nltk.data.find('tokenizers/punkt_tab')
+    except LookupError:
+        print("Downloading required NLTK data (punkt_tab)...")
+        import nltk
+        nltk.download('punkt_tab')
+    
     text_splitter = NLTKTextSplitter(chunk_size=chunk_size)
     all_splits = text_splitter.split_documents(docs)
     return all_splits
@@ -150,8 +159,4 @@ def rag_pipeline(file_path, split_by="sentence", chunk_size=10, chunk_overlap=20
     
     return vector_store
 
-if __name__ == "__main__":
-    file_path = "input_data/concept_net.txt"
-    vector_store = rag_pipeline(file_path, chunk_size=2000, chunk_overlap=200, add_start_index=True, batch_processing_size=700)
-    
     
