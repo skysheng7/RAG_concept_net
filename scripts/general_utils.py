@@ -47,3 +47,12 @@ def load_gemini_client() -> genai.Client:
     return client
 
  
+def save_df_to_csv(df, file_name, folder_path="../results"):
+     """
+     Save a dataframe to a csv file.
+     Args:
+         df (pd.DataFrame): The dataframe to save.
+         file_name (str): The name of the file to save.
+         folder_path (str): The path to the folder to save the file.
+     """
+     df.to_csv(os.path.join(folder_path, file_name), index=False)

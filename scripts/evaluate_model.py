@@ -1,4 +1,5 @@
 import pandas as pd
+import time
 
 def evaluate_model(df, answer_generation_function, client, debugging=False, vector_store=None, k=1):
     """
@@ -14,6 +15,7 @@ def evaluate_model(df, answer_generation_function, client, debugging=False, vect
         pd.DataFrame: DataFrame containing results for each question.
     """
     correct_answers = 0
+    error_answers = 0
     total_questions = len(df)
     results_df = pd.DataFrame(columns=['question', 'model_answer', 'correct_answer'])
     for index, row in df.iterrows():
@@ -34,11 +36,19 @@ def evaluate_model(df, answer_generation_function, client, debugging=False, vect
         try:
             model_answer = answer_generation_function(question, choices, **kwargs)
 
-        except:
+        except Exception as e:
+            print(f"Error: {e}, trying again...")
+            
+            if "429" in str(e) or "quota" in str(e).lower():
+                time.sleep(20)
             #try again in case of an error
             try:
                 model_answer = answer_generation_function(question, choices, **kwargs)
-            except:
+            except Exception as e:
+                print(f"Error: {e}")
+                if "429" in str(e) or "quota" in str(e).lower():
+                    time.sleep(20)
+                error_answers += 1
                 model_answer = ("Error", "Error")
 
         if model_answer[0] == correct_choice:
@@ -48,6 +58,7 @@ def evaluate_model(df, answer_generation_function, client, debugging=False, vect
         results_df = pd.concat([results_df, pd.DataFrame({
             'question': [question],
             'model_answer': [model_answer[0]],
+            'model_reasoning': [model_answer[1]],
             'correct_answer': [correct_choice],
             'correct': [correct],
             'subject': [subject]
@@ -56,5 +67,5 @@ def evaluate_model(df, answer_generation_function, client, debugging=False, vect
             print(f"Q{index}: {question}")
             print(f"Model Answer: {model_answer[0]}, Correct Answer: {correct_choice}\n")
 
-    accuracy = correct_answers / total_questions
+    accuracy = correct_answers / (total_questions - error_answers)
     return accuracy, results_df

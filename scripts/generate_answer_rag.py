@@ -17,6 +17,8 @@ def generate_answer_rag(question, choices, client, vector_store, k=1):
     """
     # build the retriever 
     retrived_docs = build_retriver(vector_store, [question], k = k)
+    # batch() returns a list of lists, so we need to get the first element
+    retrived_docs = retrived_docs[0] if retrived_docs else []
     content_text = [doc.page_content for doc in retrived_docs]
     content = "\n\n".join(content_text)
     

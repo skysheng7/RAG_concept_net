@@ -55,6 +55,10 @@ conda env create -f environment.yml
 conda activate rag
 ```
 
+**Note**: The environment includes:
+- `nltk` for natural language processing and sentence tokenization
+- `langchain_chroma` (via pip) for vector storage in the RAG pipeline
+
 ### Option 2: Using Conda-Lock (Reproducible Setup)
 
 For exact reproducibility across different operating systems:

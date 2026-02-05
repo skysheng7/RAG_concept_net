@@ -4,8 +4,10 @@ import time
 from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import NLTKTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_chroma import Chroma
 
 
 def load_txt_files(file_path):
@@ -22,7 +24,7 @@ def load_txt_files(file_path):
     return docs
 
 
-def split_text(docs, chunk_size=2000, chunk_overlap=200, add_start_index=True):
+def split_text_by_character(docs, chunk_size=2000, chunk_overlap=200, add_start_index=True):
     """
     Splits a list of documents into chunks.
     Args:
@@ -38,6 +40,52 @@ def split_text(docs, chunk_size=2000, chunk_overlap=200, add_start_index=True):
         chunk_overlap=chunk_overlap,
         add_start_index=add_start_index,
     )
+    all_splits = text_splitter.split_documents(docs)
+    return all_splits
+
+def split_text_by_newline(docs, chunk_size=1000, chunk_overlap=0, add_start_index=True):
+    """
+    Splits a list of documents into chunks by newlines.
+    Perfect for line-based data like ConceptNet where each line is a fact.
+    Args:
+        docs (list): A list of documents.
+        chunk_size (int): The size of each chunk in characters.
+        chunk_overlap (int): The overlap between chunks.
+        add_start_index (bool): Whether to add the start index to the metadata.
+    Returns:
+        list: A list of chunks.
+    """
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        add_start_index=add_start_index,
+        separators=["\n\n", "\n"],  # Prioritize splitting by newlines
+        is_separator_regex=False,
+    )
+    all_splits = text_splitter.split_documents(docs)
+    return all_splits
+
+def split_text_by_sentences(docs, chunk_size=1000):
+    """
+    Splits a list of documents into chunks.
+    Args:
+        docs (list): A list of documents.
+        chunk_size (int): The size of each chunk.
+        chunk_overlap (int): The overlap between chunks.
+        add_start_index (bool): Whether to add the start index to the metadata.
+    Returns:
+        list: A list of chunks.
+    """
+    # Ensure NLTK punkt_tab data is available
+    try:
+        import nltk
+        nltk.data.find('tokenizers/punkt_tab')
+    except LookupError:
+        print("Downloading required NLTK data (punkt_tab)...")
+        import nltk
+        nltk.download('punkt_tab')
+    
+    text_splitter = NLTKTextSplitter(chunk_size=chunk_size)
     all_splits = text_splitter.split_documents(docs)
     return all_splits
 
@@ -63,7 +111,12 @@ def create_vector_store(all_splits, batch_size=300):
         model="models/embedding-001", google_api_key=api_key
     )
     # instantiate vector store using the embeddings
-    vector_store = InMemoryVectorStore(embeddings)
+    #vector_store = InMemoryVectorStore(embeddings)
+    vector_store = Chroma(
+        collection_name="concept_net",
+        embedding_function=embeddings,
+        persist_directory="./chroma_langchain_db",
+    )
     
     # count the total number of splits
     total_splits = len(all_splits)
@@ -92,7 +145,7 @@ def create_vector_store(all_splits, batch_size=300):
             
         cur_split = cur_split + batch_size
     
-    return vector_store, ids
+    return vector_store
     
     
 def build_retriver(vector_store, queries, k = 1):
@@ -118,16 +171,32 @@ def build_retriver(vector_store, queries, k = 1):
 
     return retrived_docs
 
-def rag_pipeline(file_path, chunk_size=2000, chunk_overlap=200, add_start_index=True, batch_processing_size=300):
+def rag_pipeline(file_path, split_by="newline", chunk_size=10, chunk_overlap=200, add_start_index=True, batch_processing_size=300):
+    """
+    Build a RAG pipeline to load, split, and vectorize documents.
+    
+    Args:
+        file_path (str): Path to the text file
+        split_by (str): How to split the text. Options: "newline", "character", "sentence"
+        chunk_size (int): Size of each chunk
+        chunk_overlap (int): Overlap between chunks (not used for sentence splitting)
+        add_start_index (bool): Whether to add start index to metadata
+        batch_processing_size (int): Batch size for processing embeddings
+    
+    Returns:
+        vector_store: The created vector store
+    """
     docs = load_txt_files(file_path)
-    all_splits = split_text(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=add_start_index)
-    vector_store, ids = create_vector_store(all_splits, batch_size=batch_processing_size)
     
-    return vector_store, ids
+    if split_by == "newline":
+        all_splits = split_text_by_newline(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=add_start_index)
+    elif split_by == "sentence":
+        all_splits = split_text_by_sentences(docs, chunk_size=chunk_size)
+    else:  # character
+        all_splits = split_text_by_character(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=add_start_index)
+    
+    vector_store = create_vector_store(all_splits, batch_size=batch_processing_size)
+    
+    return vector_store
 
-if __name__ == "__main__":
-    file_path = "input_data/concept_net.txt"
-    vector_store, ids = rag_pipeline(file_path, chunk_size=2000, chunk_overlap=200, add_start_index=True, batch_processing_size=700)
-    print(f"Successfully created vector store with {len(ids)} documents")
-    
     
