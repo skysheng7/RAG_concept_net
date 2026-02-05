@@ -1,23 +1,58 @@
 import time
 import json
 import os
+import getpass
+from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 
-def setup_huggingface_embeddings(model_name="sentence-transformers/all-MiniLM-L6-v2"):
+
+## Embedding models
+def setup_gemini_embeddings(model_name="models/embedding-001"):
+    load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        api_key = getpass.getpass("Enter API key for Google Gemini: ")
+    print(f"Loading Gemini embeddings model: {model_name}...")
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model=model_name,
+        google_api_key=api_key,
+    )
+    print("✓ Embeddings model loaded successfully")
+    return embeddings
+
+def setup_minilm_embeddings(model_name="sentence-transformers/all-MiniLM-L6-v2"):
     print(f"Loading HuggingFace embeddings model: {model_name}...")
     embeddings = HuggingFaceEmbeddings(model_name=model_name)
     print("✓ Embeddings model loaded successfully")
     return embeddings
 
+def get_embeddings(embedding_model="gemini", model_name=None):
+    if embedding_model == "gemini":
+        return setup_gemini_embeddings(model_name or "models/embedding-001")
+    if embedding_model == "minilm":
+        return setup_minilm_embeddings(model_name or "sentence-transformers/all-MiniLM-L6-v2")
+    raise ValueError("Unsupported embedding_model. Use 'gemini' or 'minilm'.")
+
+
+## Load text file
 def load_text_file(file_path: str):
     # Load text file into documents
-    loader = TextLoader(file_path)
-    documents = loader.load()
-    return documents
+    abs_path = os.path.abspath(file_path)
+    if not os.path.exists(abs_path):
+        raise FileNotFoundError(f"Text file not found: {abs_path}")
+    try:
+        loader = TextLoader(abs_path, encoding="utf-8", autodetect_encoding=True)
+        documents = loader.load()
+        return documents
+    except Exception as exc:
+        raise RuntimeError(f"Error loading text file: {abs_path}") from exc
 
+
+## Split documents into chunks
 def split_doc(documents, chunk_size=1000, chunk_overlap=200):
     # Split documents into chunks
     text_splitter = RecursiveCharacterTextSplitter(
@@ -29,7 +64,15 @@ def split_doc(documents, chunk_size=1000, chunk_overlap=200):
     return docs
 
 
-def embed_doc(docs, embeddings, batch_size=300, delay_seconds=2, persist_path="./vector_store"):
+## Embed documents into vector store
+def embed_doc(
+    docs,
+    embeddings,
+    batch_size=700,
+    delay_seconds=1.0,
+    persist_path="./vector_store",
+    skip_delay=False,
+):
     # Create initial vector store with first batch
     print(f"Processing {len(docs)} documents in batches of {batch_size}...")
     
@@ -64,7 +107,7 @@ def embed_doc(docs, embeddings, batch_size=300, delay_seconds=2, persist_path=".
             print(f"✓ Batch {batch_num} completed successfully")
             
             # Add delay between batches to avoid rate limiting
-            if i + batch_size < len(remaining_docs):
+            if i + batch_size < len(remaining_docs) and not skip_delay and delay_seconds > 0:
                 print(f"Waiting {delay_seconds}s before next batch...")
                 time.sleep(delay_seconds)
         
@@ -91,13 +134,38 @@ def embed_doc(docs, embeddings, batch_size=300, delay_seconds=2, persist_path=".
     
     return vector_store
 
-def create_vector_store(file_path, embeddings, chunk_size=1000, chunk_overlap=200, batch_size=300, delay_seconds=2, persist_path="./vector_store"):
+
+## Main function creating vector store
+def create_vector_store(
+    file_path,
+    chunk_size=1000,
+    chunk_overlap=200,
+    batch_size=700,
+    delay_seconds=1.0,
+    persist_path="./vector_store",
+    embedding_model="gemini",
+    model_name=None,
+):
     documents = load_text_file(file_path)
     docs = split_doc(documents, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    vector_store = embed_doc(docs, embeddings, batch_size=batch_size, delay_seconds=delay_seconds, persist_path=persist_path)
+    embeddings = get_embeddings(embedding_model=embedding_model, model_name=model_name)
+    skip_delay = embedding_model == "minilm"
+    vector_store = embed_doc(
+        docs,
+        embeddings,
+        batch_size=batch_size,
+        delay_seconds=delay_seconds,
+        persist_path=persist_path,
+        skip_delay=skip_delay,
+    )
     return vector_store
 
-def create_retriever(embeddings=None, persist_path="./vector_store", vector_store=None, stype="similarity", k=1):
+
+## Taking a vector store path or object, create a retriever
+def create_retriever(persist_path="./vector_store", vector_store=None, k=1, embedding_model="gemini", model_name=None):
+    # create embedding model
+    embeddings = get_embeddings(embedding_model=embedding_model, model_name=model_name)
+    
     # If vector_store not provided, try to load from disk
     if vector_store is None:
         if os.path.exists(persist_path):
@@ -108,39 +176,24 @@ def create_retriever(embeddings=None, persist_path="./vector_store", vector_stor
             raise ValueError(f"No vector store found at {persist_path}. Please create one first using embed_doc().")
     
     retriever = vector_store.as_retriever(
-        search_type=stype,
+        search_type="similarity",
         search_kwargs={"k": k},
     )
     return retriever
 
-def generate_answer_rag(embeddings, persist_path, question, choices, client, k=3, stype="similarity"):
-    """
-    Generate answer using RAG by loading vector store and retrieving relevant context.
-    
-    Parameters
-    ----------
-    embeddings : Embeddings
-        Embedding model to use for loading the vector store
-    persist_path : str
-        Path to the saved vector store
-    question : str
-        Question to answer
-    choices : list
-        List of answer choices
-    client : genai.Client
-        Gemini client for generation
-    k : int, optional
-        Number of documents to retrieve (default: 3)
-    stype : str, optional
-        Search type for retriever (default: "similarity")
-    
-    Returns
-    -------
-    tuple
-        (answer, reasoning)
-    """
+
+
+
+
+
+def generate_answer_rag_flo(persist_path, question, choices, client, k=3, embedding_model="gemini", model_name=None):
     # Create retriever from saved vector store
-    retriever = create_retriever(embeddings=embeddings, persist_path=persist_path, stype=stype, k=k)
+    retriever = create_retriever(
+        persist_path=persist_path,
+        k=k,
+        embedding_model=embedding_model,
+        model_name=model_name,
+    )
     
     # Format choices clearly for the model
     formatted_choices = "\n".join([f"{chr(65+i)}) {choice}" for i, choice in enumerate(choices)])
@@ -181,3 +234,19 @@ def generate_answer_rag(embeddings, persist_path, question, choices, client, k=3
     return data["answer"], data["reasoning"]
     
     
+
+if __name__ == "__main__":
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    file_path = os.path.join(base_dir, "input_data", "concept_net.txt")
+    persist_path = "./vector_store_faiss"
+    
+    # Create vector store
+    create_vector_store(
+        file_path=file_path,
+        chunk_size=2000,
+        chunk_overlap=200,
+        batch_size=1500,
+        delay_seconds=1.0,
+        persist_path=persist_path,
+        embedding_model="gemini",
+    )
