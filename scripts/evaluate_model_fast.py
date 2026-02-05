@@ -13,12 +13,14 @@ def process_row(row, answer_generation_function, client, vector_store, k):
         kwargs.update({"vector_store": vector_store, "k": k})
 
     # Retry logic
-    for _ in range(2):
+    for i in range(2):
         try:
             model_answer = answer_generation_function(question, choices, **kwargs)
-            break
-        except Exception:
-            model_answer = ("Error", "Error")
+            break # Success! Exit the loop
+        except Exception as e:
+            # Captures the specific error message as the reasoning
+            error_msg = f"Attempt {i+1} failed: {str(e)}"
+            model_answer = (f"Error", error_msg)
             
     return {
         'question': question,
@@ -36,13 +38,28 @@ def evaluate_model_fast(df, answer_generation_function, client, debugging=False,
     # Use ThreadPoolExecutor to call the API in parallel
     results = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # map ensures we keep the order of the questions
         results = list(executor.map(lambda r: process_row(r, answer_generation_function, client, vector_store, k), rows))
 
     results_df = pd.DataFrame(results)
-    accuracy = results_df['correct'].mean()
+
+    # --- New Filtering Logic ---
+    # Filter for rows where the model actually gave a choice (A, B, C, or D)
+    # and didn't return "Error"
+    valid_results = results_df[results_df['model_answer'] != "Error"]
+    
+    if not valid_results.empty:
+        accuracy = valid_results['correct'].mean()
+    else:
+        accuracy = 0.0  # Handle case where everything failed
+    # ---------------------------
     
     if debugging:
-        print(f"Evaluation complete. Accuracy: {accuracy:.2%}")
+        error_count = len(results_df) - len(valid_results)
+        print(f"Evaluation complete.")
+        print(f"Total Rows: {len(results_df)} | Errors Excluded: {error_count}")
+        print(f"Adjusted Accuracy: {accuracy:.2%}")
         
+    return accuracy, results_df
+        
+
     return accuracy, results_df
