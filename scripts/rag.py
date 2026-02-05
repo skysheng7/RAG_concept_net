@@ -1,5 +1,8 @@
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_core.vectorstores import InMemoryVectorStore
+from general_utils import load_gemini_client
 
 def load_txt_files(file_path):
     """
@@ -31,6 +34,16 @@ def split_text(docs, chunk_size=1000, chunk_overlap=200, add_start_index=True):
     )
     all_splits = text_splitter.split_documents(docs)
     return all_splits
+
+def create_vector_store(all_splits):
+    # load gemini API client
+    load_gemini_client()
+    # create embeddings
+    embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+    # instantiate vector store using the embeddings
+    vector_store = InMemoryVectorStore(embeddings)
+    # index the documents
+    ids = vector_store.add_documents(documents=all_splits)
 
 if __name__ == "__main__":
     file_path = "input_data/concept_net.txt"

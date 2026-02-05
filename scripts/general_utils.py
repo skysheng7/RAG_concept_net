@@ -6,6 +6,7 @@ Provides unified interface that calls provider-specific low-level functions.
 import os
 from dotenv import load_dotenv
 from google import genai
+import getpass
 
 def extract_text_from_txt(file_path: str) -> str:
     """
@@ -40,10 +41,7 @@ def load_gemini_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY")
 
     if not api_key:
-        raise ValueError(
-            "GEMINI_API_KEY not found in environment variables. "
-            "Please create a .env file with your API key."
-        )
+        os.environ["GEMINI_API_KEY"] = getpass.getpass("Enter API key for Google Gemini: ")
 
     client = genai.Client(api_key=api_key)
     return client
