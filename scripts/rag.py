@@ -55,14 +55,13 @@ def create_vector_store(all_splits, batch_size=300, delay_seconds=2):
     # Load environment variables
     load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY")
-    
+
     if not api_key:
         api_key = getpass.getpass("Enter API key for Google Gemini: ")
-    
+
     # create embeddings with API key
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=api_key
+        model="models/embedding-001", google_api_key=api_key
     )
     # instantiate vector store using the embeddings
     vector_store = InMemoryVectorStore(embeddings)
@@ -109,6 +108,19 @@ def create_vector_store(all_splits, batch_size=300, delay_seconds=2):
                 raise
 
     return vector_store, all_ids
+
+
+def build_retriver(vector_store, queries):
+    retriever = vector_store.as_retriever(
+        search_type="similarity",
+        search_kwargs={"k": 1},
+    )
+
+    retrived_docs = retriever.batch(
+        queries,
+    )
+
+    return retrived_docs
 
 
 if __name__ == "__main__":
