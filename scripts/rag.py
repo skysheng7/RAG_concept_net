@@ -6,6 +6,7 @@ from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_chroma import Chroma
 
 
 def load_txt_files(file_path):
@@ -63,7 +64,12 @@ def create_vector_store(all_splits, batch_size=300):
         model="models/embedding-001", google_api_key=api_key
     )
     # instantiate vector store using the embeddings
-    vector_store = InMemoryVectorStore(embeddings)
+    #vector_store = InMemoryVectorStore(embeddings)
+    vector_store = Chroma(
+        collection_name="concept_net",
+        embedding_function=embeddings,
+        persist_directory="./chroma_langchain_db",
+    )
     
     # count the total number of splits
     total_splits = len(all_splits)
@@ -92,7 +98,7 @@ def create_vector_store(all_splits, batch_size=300):
             
         cur_split = cur_split + batch_size
     
-    return vector_store, ids
+    return vector_store
     
     
 def build_retriver(vector_store, queries, k = 1):
@@ -121,13 +127,12 @@ def build_retriver(vector_store, queries, k = 1):
 def rag_pipeline(file_path, chunk_size=2000, chunk_overlap=200, add_start_index=True, batch_processing_size=300):
     docs = load_txt_files(file_path)
     all_splits = split_text(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=add_start_index)
-    vector_store, ids = create_vector_store(all_splits, batch_size=batch_processing_size)
+    vector_store = create_vector_store(all_splits, batch_size=batch_processing_size)
     
-    return vector_store, ids
+    return vector_store
 
 if __name__ == "__main__":
     file_path = "input_data/concept_net.txt"
-    vector_store, ids = rag_pipeline(file_path, chunk_size=2000, chunk_overlap=200, add_start_index=True, batch_processing_size=700)
-    print(f"Successfully created vector store with {len(ids)} documents")
+    vector_store = rag_pipeline(file_path, chunk_size=2000, chunk_overlap=200, add_start_index=True, batch_processing_size=700)
     
     
