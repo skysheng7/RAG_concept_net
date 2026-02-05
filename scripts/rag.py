@@ -4,6 +4,7 @@ import time
 from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import NLTKTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_chroma import Chroma
@@ -23,7 +24,7 @@ def load_txt_files(file_path):
     return docs
 
 
-def split_text(docs, chunk_size=2000, chunk_overlap=200, add_start_index=True):
+def split_text_by_character(docs, chunk_size=2000, chunk_overlap=200, add_start_index=True):
     """
     Splits a list of documents into chunks.
     Args:
@@ -39,6 +40,21 @@ def split_text(docs, chunk_size=2000, chunk_overlap=200, add_start_index=True):
         chunk_overlap=chunk_overlap,
         add_start_index=add_start_index,
     )
+    all_splits = text_splitter.split_documents(docs)
+    return all_splits
+
+def split_text_by_sentences(docs, chunk_size=10):
+    """
+    Splits a list of documents into chunks.
+    Args:
+        docs (list): A list of documents.
+        chunk_size (int): The size of each chunk.
+        chunk_overlap (int): The overlap between chunks.
+        add_start_index (bool): Whether to add the start index to the metadata.
+    Returns:
+        list: A list of chunks.
+    """
+    text_splitter = NLTKTextSplitter(chunk_size=chunk_size)
     all_splits = text_splitter.split_documents(docs)
     return all_splits
 
@@ -124,9 +140,12 @@ def build_retriver(vector_store, queries, k = 1):
 
     return retrived_docs
 
-def rag_pipeline(file_path, chunk_size=2000, chunk_overlap=200, add_start_index=True, batch_processing_size=300):
+def rag_pipeline(file_path, split_by="sentence", chunk_size=10, chunk_overlap=200, add_start_index=True, batch_processing_size=300):
     docs = load_txt_files(file_path)
-    all_splits = split_text(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=add_start_index)
+    if split_by=="sentence":
+        all_splits = split_text_by_sentences(docs, chunk_size=chunk_size)
+    else: 
+        all_splits = split_text_by_character(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=add_start_index)
     vector_store = create_vector_store(all_splits, batch_size=batch_processing_size)
     
     return vector_store
