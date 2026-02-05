@@ -43,6 +43,28 @@ def split_text_by_character(docs, chunk_size=2000, chunk_overlap=200, add_start_
     all_splits = text_splitter.split_documents(docs)
     return all_splits
 
+def split_text_by_newline(docs, chunk_size=1000, chunk_overlap=0, add_start_index=True):
+    """
+    Splits a list of documents into chunks by newlines.
+    Perfect for line-based data like ConceptNet where each line is a fact.
+    Args:
+        docs (list): A list of documents.
+        chunk_size (int): The size of each chunk in characters.
+        chunk_overlap (int): The overlap between chunks.
+        add_start_index (bool): Whether to add the start index to the metadata.
+    Returns:
+        list: A list of chunks.
+    """
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        add_start_index=add_start_index,
+        separators=["\n\n", "\n"],  # Prioritize splitting by newlines
+        is_separator_regex=False,
+    )
+    all_splits = text_splitter.split_documents(docs)
+    return all_splits
+
 def split_text_by_sentences(docs, chunk_size=1000):
     """
     Splits a list of documents into chunks.
@@ -149,12 +171,30 @@ def build_retriver(vector_store, queries, k = 1):
 
     return retrived_docs
 
-def rag_pipeline(file_path, split_by="sentence", chunk_size=10, chunk_overlap=200, add_start_index=True, batch_processing_size=300):
+def rag_pipeline(file_path, split_by="newline", chunk_size=10, chunk_overlap=200, add_start_index=True, batch_processing_size=300):
+    """
+    Build a RAG pipeline to load, split, and vectorize documents.
+    
+    Args:
+        file_path (str): Path to the text file
+        split_by (str): How to split the text. Options: "newline", "character", "sentence"
+        chunk_size (int): Size of each chunk
+        chunk_overlap (int): Overlap between chunks (not used for sentence splitting)
+        add_start_index (bool): Whether to add start index to metadata
+        batch_processing_size (int): Batch size for processing embeddings
+    
+    Returns:
+        vector_store: The created vector store
+    """
     docs = load_txt_files(file_path)
-    if split_by=="sentence":
+    
+    if split_by == "newline":
+        all_splits = split_text_by_newline(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=add_start_index)
+    elif split_by == "sentence":
         all_splits = split_text_by_sentences(docs, chunk_size=chunk_size)
-    else: 
+    else:  # character
         all_splits = split_text_by_character(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=add_start_index)
+    
     vector_store = create_vector_store(all_splits, batch_size=batch_processing_size)
     
     return vector_store
