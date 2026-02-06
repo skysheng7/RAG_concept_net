@@ -108,7 +108,7 @@ def create_vector_store(all_splits, batch_size=300):
 
     # create embeddings with API key
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001", google_api_key=api_key
+        model="models/gemini-embedding-001", google_api_key=api_key
     )
     # instantiate vector store using the embeddings
     #vector_store = InMemoryVectorStore(embeddings)
