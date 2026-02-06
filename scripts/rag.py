@@ -89,6 +89,35 @@ def split_text_by_sentences(docs, chunk_size=1000):
     all_splits = text_splitter.split_documents(docs)
     return all_splits
 
+def load_vector_store(persist_directory="./chroma_langchain_db"):
+    """
+    Load a vector store from a directory.
+    Args:
+        persist_directory (str): The directory to load the vector store from
+    Returns:
+        vector_store: The loaded vector store
+    """
+    # Load environment variables
+    load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key:
+        api_key = getpass.getpass("Enter API key for Google Gemini: ")
+
+    # Create the same embeddings model used during creation
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/gemini-embedding-001", 
+        google_api_key=api_key
+    )
+    
+    # Load with embeddings and collection name
+    vector_store = Chroma(
+        collection_name="concept_net",
+        embedding_function=embeddings,
+        persist_directory=persist_directory,
+    )
+    
+    return vector_store
 
 def create_vector_store(all_splits, batch_size=300):
     """
@@ -99,24 +128,8 @@ def create_vector_store(all_splits, batch_size=300):
     Returns:
         tuple: (vector_store, ids)
     """
-    # Load environment variables
-    load_dotenv()
-    api_key = os.getenv("GEMINI_API_KEY")
-
-    if not api_key:
-        api_key = getpass.getpass("Enter API key for Google Gemini: ")
-
-    # create embeddings with API key
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/gemini-embedding-001", google_api_key=api_key
-    )
-    # instantiate vector store using the embeddings
-    #vector_store = InMemoryVectorStore(embeddings)
-    vector_store = Chroma(
-        collection_name="concept_net",
-        embedding_function=embeddings,
-        persist_directory="./chroma_langchain_db",
-    )
+    
+    vector_store = load_vector_store()
     
     # count the total number of splits
     total_splits = len(all_splits)
