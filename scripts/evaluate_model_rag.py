@@ -1,137 +1,87 @@
 import pandas as pd
+import json
+import time
 from rag_florent import create_retriever
 
+def generate_answer(context, question, choices, client):
+    # format choices
+    formatted_choices = "\n".join([f"{chr(65+i)}) {choice}" for i, choice in enumerate(choices)])
+    
+    prompt = (
+        f"Context: {context}\n\n"
+        f"Question: {question}\n\n"
+        f"Choices:\n{formatted_choices}\n\n"
+        "Provide your final answer as one of the letters A, B, C, or D."
+    )
 
-def _normalize_answer(answer):
-    if isinstance(answer, (int, float)):
-        answer_int = int(answer)
-        if answer_int in (0, 1, 2, 3):
-            return "ABCD"[answer_int]
-        if answer_int in (1, 2, 3, 4):
-            return "ABCD"[answer_int - 1]
-    if isinstance(answer, str):
-        cleaned = answer.strip().upper()
-        if cleaned in ("A", "B", "C", "D"):
-            return cleaned
-        if cleaned.isdigit():
-            answer_int = int(cleaned)
-            if answer_int in (0, 1, 2, 3):
-                return "ABCD"[answer_int]
-            if answer_int in (1, 2, 3, 4):
-                return "ABCD"[answer_int - 1]
-    return str(answer)
-
-
-def _docs_for_index(retrieved_docs, index, total_questions):
-    if total_questions == 1 and retrieved_docs:
-        if isinstance(retrieved_docs[0], list):
-            return retrieved_docs[0]
-        return retrieved_docs
-    if index < len(retrieved_docs):
-        docs = retrieved_docs[index]
-        if isinstance(docs, list):
-            return docs
-        return [docs]
-    return []
-
-
-def _build_context(docs_list):
-    context_parts = []
-    for doc in docs_list:
-        source = getattr(doc, "metadata", {}).get("source", "unknown")
-        content = getattr(doc, "page_content", str(doc))
-        context_parts.append(f"Source: {source}\n{content}")
-    return "\n\n".join(context_parts)
+    # Use JSON mode to guarantee a parseable structure
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config={
+            "response_mime_type": "application/json",
+            "response_schema": {
+                "type": "object",
+                "properties": {
+                    "reasoning": {"type": "string"},
+                    "answer": {"type": "string", "enum": ["A", "B", "C", "D"]}
+                },
+                "required": ["reasoning", "answer"]
+            },
+            "max_output_tokens": 5096,
+            "temperature": 0.1, # Low temperature for factual MMLU tasks
+        }
+    )
+    data = json.loads(response.text)
+    return data["answer"], data["reasoning"]
 
 
-def _call_answer_function(answer_generation_function, question, choices, client, context, docs_list):
-    try_kwargs = [
-        {"client": client, "context": context},
-        {"client": client, "retrieved_docs": docs_list},
-        {"client": client},
-    ]
-    for kwargs in try_kwargs:
-        try:
-            return answer_generation_function(question, choices, **kwargs)
-        except TypeError:
-            continue
-    return ("Error", "Error")
+def evaluate_model_rag(df, vector_store, answer_generation_function, embedding_model, client, k=1, debugging=False):
+    retriever = create_retriever(vector_store, k=k, embedding_model=embedding_model)
 
+    # get context for each question
+    contexts = retriever.batch(df['question'].tolist())
 
-def evaluate_model_rag(df, answer_generation_function, client, vector_store, k=1, debugging=False):
-    """
-    Evaluates the model on a given DataFrame of questions using batched retrieval.
-    Args:
-        df (pd.DataFrame): DataFrame containing 'question', 'choices', and 'answer' columns.
-        answer_generation_function (function): Function to generate answers given a question and choices.
-            Expected signature: (question: str, choices: List[str], client, context: str)
-            Return: (answer_choice: str, explanation: str).
-        client (Client): The Gemini client.
-        vector_store (FAISS): The vector store to retrieve from.
-        k (int): The number of most similar documents to return per question.
-        debugging (bool): If True, prints detailed information for each question.
-    Returns:
-        float: Accuracy of the model.
-        pd.DataFrame: DataFrame containing results for each question.
-    """
-    questions = df["question"].tolist()
-    retriever = create_retriever(vector_store=vector_store, k=k)
-    retrieved_docs = retriever.batch(questions)
-
-    correct_answers = 0
-    total_questions = len(df)
-    results_df = pd.DataFrame(columns=["question", "model_answer", "correct_answer", "correct"])
+    # create results dataframe
+    results_df = pd.DataFrame(columns=['question', 'model_answer', 'correct_answer'])
 
     for index, row in df.iterrows():
-        question = row["question"]
-        choices = list(row["choices"])
-        correct_choice = _normalize_answer(row["answer"])
-
-        docs_list = _docs_for_index(retrieved_docs, index, total_questions)
-        context = _build_context(docs_list)
+        # get answer
+        question = row['question']
+        choices = row['choices']
+        context = "\n\n".join({doc.page_content for doc in contexts[index]})
 
         try:
-            model_answer = _call_answer_function(
-                answer_generation_function,
-                question,
-                choices,
-                client,
-                context,
-                docs_list,
-            )
-        except Exception:
+            answer, reasoning = answer_generation_function(context, question, choices, client)
+        except Exception as e: 
+            print(f"Error: {e}, trying again...")
+            
+            if "429" in str(e) or "quota" in str(e).lower():
+                time.sleep(20)
+            #try again in case of an error
             try:
-                model_answer = _call_answer_function(
-                    answer_generation_function,
-                    question,
-                    choices,
-                    client,
-                    context,
-                    docs_list,
-                )
-            except Exception:
+                model_answer = answer_generation_function(question, choices, **kwargs)
+            except Exception as e:
+                print(f"Error: {e}")
+                if "429" in str(e) or "quota" in str(e).lower():
+                    time.sleep(20)
+                error_answers += 1
                 model_answer = ("Error", "Error")
 
-        correct = model_answer[0] == correct_choice
-        if correct:
-            correct_answers += 1
+        # store answer in results_df
+        results_df.iloc[index] = {
+            'question': question,
+            'model_answer':model_answer,
+            'correct_answer': row['answer']
+            }
+        
+    # add subject column
+    results_df['subject'] = df['subject']
+        
+    # compare answers
+    results_df['correct'] = results_df['model_answer'][0] == results_df['correct_answer']
 
-        result_row = {
-            "question": question,
-            "model_answer": model_answer[0],
-            "correct_answer": correct_choice,
-            "correct": correct,
-        }
-        if "subject" in row:
-            result_row["subject"] = row["subject"]
-            if "subject" not in results_df.columns:
-                results_df["subject"] = pd.Series(dtype="object")
+    # compute accuracy
+    accuracy = results_df['correct'].astype(int).mean()
 
-        results_df = pd.concat([results_df, pd.DataFrame([result_row])], ignore_index=True)
-
-        if debugging:
-            print(f"Q{index}: {question}")
-            print(f"Model Answer: {model_answer[0]}, Correct Answer: {correct_choice}\n")
-
-    accuracy = correct_answers / total_questions if total_questions else 0.0
     return accuracy, results_df

@@ -146,9 +146,15 @@ def create_vector_store(
     embedding_model="gemini",
     model_name=None,
 ):
+    embeddings = get_embeddings(embedding_model=embedding_model, model_name=model_name)
+    if os.path.exists(persist_path):
+        print(f"Loading existing vector store from {persist_path}...")
+        vector_store = FAISS.load_local(persist_path, embeddings, allow_dangerous_deserialization=True)
+        print("✓ Vector store loaded successfully")
+        return vector_store
+
     documents = load_text_file(file_path)
     docs = split_doc(documents, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    embeddings = get_embeddings(embedding_model=embedding_model, model_name=model_name)
     skip_delay = embedding_model == "minilm"
     vector_store = embed_doc(
         docs,
@@ -166,14 +172,8 @@ def create_retriever(persist_path="./vector_store", vector_store=None, k=1, embe
     # create embedding model
     embeddings = get_embeddings(embedding_model=embedding_model, model_name=model_name)
     
-    # If vector_store not provided, try to load from disk
     if vector_store is None:
-        if os.path.exists(persist_path):
-            print(f"Loading existing vector store from {persist_path}...")
-            vector_store = FAISS.load_local(persist_path, embeddings, allow_dangerous_deserialization=True)
-            print("✓ Vector store loaded successfully")
-        else:
-            raise ValueError(f"No vector store found at {persist_path}. Please create one first using embed_doc().")
+        vector_store = FAISS.load_local(persist_path, embeddings, allow_dangerous_deserialization=True)
     
     retriever = vector_store.as_retriever(
         search_type="similarity",
