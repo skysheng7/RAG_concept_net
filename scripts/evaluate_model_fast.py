@@ -34,7 +34,7 @@ def process_row(
             model_answer = (f"Error", error_msg)
 
     # if this is standard prompt, there is no reasoning
-    if isinstance(model_answer, list):
+    if isinstance(model_answer, (list, tuple)):
         return_model_answer = model_answer[0]
 
         if len(model_answer) > 1:
