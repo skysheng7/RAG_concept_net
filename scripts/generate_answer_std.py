@@ -1,6 +1,6 @@
 import json
 
-def generate_answer_std(question, choices, client):
+def generate_answer_std(question, choices, client, prompt=None):
     """
     Generates an answer using standard prompting.
     Args:
@@ -15,8 +15,7 @@ def generate_answer_std(question, choices, client):
     
     prompt = (
         f"Question: {question}\n\n"
-        f"Choices:\n{formatted_choices}\n\n"
-        "Respond only with your final answer as one of the letters A, B, C, or D. Your final answer as one of the letters should be in the 'answer' field. Any other text should be in the 'reasoning' field."
+        f"Choices:\n{formatted_choices}\n\n{prompt}"
     )
 
     # Use JSON mode to guarantee a parseable structure
@@ -28,16 +27,15 @@ def generate_answer_std(question, choices, client):
             "response_schema": {
                 "type": "object",
                 "properties": {
-                    "reasoning": {"type": "string"},
                     "answer": {"type": "string", "enum": ["A", "B", "C", "D"]}
                 },
-                "required": ["reasoning", "answer"]
+                "required": ["answer"]
             },
             "max_output_tokens": 5096,
             "temperature": 0.1, # Low temperature for factual MMLU tasks
         }
     )
     data = json.loads(response.text)
-    return data["answer"], data["reasoning"]
+    return data["answer"]
     
 

@@ -7,6 +7,12 @@ def import_datasets(names):
         datasets[name] = load_dataset('cais/mmlu', name, split='test[:100]').to_pandas()
     return datasets
 
+def import_few_shot_examples(names):
+    datasets = {}
+    for name in names:                                                                                             
+        datasets[name] = load_dataset('cais/mmlu', name, split='dev[:5]').to_pandas()
+    return datasets
+
 if __name__ == "__main__":
     dataset_names = ['anatomy', 'formal_logic', 'moral_scenarios']
     datasets = import_datasets(dataset_names)   

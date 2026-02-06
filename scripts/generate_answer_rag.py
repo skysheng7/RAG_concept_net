@@ -2,7 +2,7 @@ import json
 from rag import build_retriver
 
 
-def generate_answer_rag(question, choices, client, vector_store, k=1):
+def generate_answer_rag(question, choices, client, vector_store, k=1, prompt=None):
     """
     Generates an answer using RAG.
     Args:
@@ -29,7 +29,7 @@ def generate_answer_rag(question, choices, client, vector_store, k=1):
         f"Context: {content}\n\n"
         f"Question: {question}\n\n"
         f"Choices:\n{formatted_choices}\n\n"
-        "Provide your final answer as one of the letters A, B, C, or D."
+        f"{prompt}"
     )
 
     # Use JSON mode to guarantee a parseable structure

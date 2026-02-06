@@ -1,7 +1,12 @@
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
+import import_datasets
+import general_utils
+from generate_answer_std import generate_answer_std
+from generate_answer_cot import generate_answer_cot
+from generate_answer_rag import generate_answer_rag
 
-def process_row(row, answer_generation_function, client, vector_store, k):
+def process_row(row, answer_generation_function, client, vector_store, k, prompt, prompt_type):
     """Helper to process a single row for parallel execution."""
     question = row['question']
     choices = row['choices'][:4]  # Simplified slicing
@@ -24,24 +29,37 @@ def process_row(row, answer_generation_function, client, vector_store, k):
             error_msg = f"Attempt {i+1} failed: {str(e)}"
             model_answer = (f"Error", error_msg)
             
+    # if this is standard prompt, there is no reasoning
+    if isinstance(model_answer, list):
+        return_model_answer = model_answer[0]
+        
+        if (len(model_answer) > 1):
+            return_model_resoning = model_answer[1]
+    else:
+        return_model_answer = model_answer
+        return_model_resoning = None
+        
+            
     return {
         'question': question,
-        'model_answer': model_answer[0],
-        'model_reasoning': model_answer[1],
+        'model_answer': return_model_answer,
+        'model_reasoning': return_model_resoning,
         'correct_answer': correct_choice,
-        'correct': model_answer[0] == correct_choice,
+        'correct': return_model_answer.upper() == correct_choice.upper(),
         'subject': subject,
-        'k': k_to_store
+        'k': k_to_store,
+        'prompt_type': prompt_type,
+        'prompt': prompt
     }
 
-def evaluate_model_fast(df, answer_generation_function, client, debugging=False, vector_store=None, k=1, max_workers=10):
+def evaluate_model_fast(df, answer_generation_function, client, debugging=False, vector_store=None, k=1, max_workers=10, prompt=None, prompt_type=None):
     # Convert DF to list of dicts for faster iteration
     rows = df.to_dict('records')
     
     # Use ThreadPoolExecutor to call the API in parallel
     results = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(lambda r: process_row(r, answer_generation_function, client, vector_store, k), rows))
+        results = list(executor.map(lambda r: process_row(r, answer_generation_function, client, vector_store, k, prompt, prompt_type), rows))
 
     results_df = pd.DataFrame(results)
 
@@ -64,3 +82,34 @@ def evaluate_model_fast(df, answer_generation_function, client, debugging=False,
         
     return accuracy, results_df
     
+def batch_eval(dataset_names, prompt_db, client, k_range, debugging=False, vector_store=None, max_workers=10, folder_path="../results"):
+    # load datasets (100 samples from each dataset)
+    #Generate 100 samples from the mmlu datasets
+    datasets = import_datasets.import_datasets(dataset_names)
+    
+    # create a master dataframe to store all the results
+    master_results_df = pd.DataFrame()
+    for subject, df in datasets.items():
+        for prompt_type, prompt in prompt_db.items():
+            # standard prompt
+            if prompt_type == "standard":
+                accuracy, results_df = evaluate_model_fast(df, generate_answer_std, client, debugging=debugging, max_workers=max_workers, prompt=prompt, prompt_type=prompt_type)
+                master_results_df = pd.concat([master_results_df, results_df], ignore_index=True)
+                general_utils.save_df_to_csv(results_df, f"results_df_{subject}_{prompt_type}.csv", folder_path=folder_path)
+            elif "cot" in prompt_type: # chain-of-thought prompting with variations
+                if "persona" in prompt_type:
+                    subject_name = subject.replace("_", " ")
+                    update_prompt = prompt.replace("\{domain\}", subject_name)
+                accuracy, results_df = evaluate_model_fast(df, generate_answer_cot, client, debugging=debugging, max_workers=max_workers, prompt=prompt, prompt_type=prompt_type)
+                master_results_df = pd.concat([master_results_df, results_df], ignore_index=True)
+                general_utils.save_df_to_csv(results_df, f"results_df_{subject}_{prompt_type}.csv", folder_path=folder_path)
+            elif "rag" in prompt_type: # RAG prompting
+                for k in k_range: 
+                    accuracy, results_df = evaluate_model_fast(df, generate_answer_rag, client, debugging=debugging, vector_store=vector_store, k=k, max_workers=max_workers, prompt=prompt, prompt_type=prompt_type)
+                    master_results_df = pd.concat([master_results_df, results_df], ignore_index=True)
+                    general_utils.save_df_to_csv(results_df, f"results_df_{subject}_{prompt_type}_k{k}.csv", folder_path=folder_path)
+    
+    # save the master results dataframe
+    general_utils.save_df_to_csv(master_results_df, f"master_results_df.csv", folder_path=folder_path)
+    
+    return master_results_df
