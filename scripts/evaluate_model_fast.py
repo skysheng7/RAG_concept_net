@@ -1,5 +1,6 @@
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
+from general_utils import save_df_to_csv
 
 def process_row(row, answer_generation_function, client, vector_store, k):
     """Helper to process a single row for parallel execution."""
