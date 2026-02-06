@@ -15,7 +15,7 @@ def process_row(row, answer_generation_function, client, vector_store, k):
         k_to_store = k
 
     # Retry logic
-    for i in range(5):
+    for i in range(10):
         try:
             model_answer = answer_generation_function(question, choices, **kwargs)
             break # Success! Exit the loop
