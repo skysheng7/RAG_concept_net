@@ -1,6 +1,5 @@
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
-from general_utils import save_df_to_csv
 
 def process_row(row, answer_generation_function, client, vector_store, k):
     """Helper to process a single row for parallel execution."""
@@ -8,13 +7,15 @@ def process_row(row, answer_generation_function, client, vector_store, k):
     choices = row['choices'][:4]  # Simplified slicing
     correct_choice = {0: 'A', 1: 'B', 2: 'C', 3: 'D'}[row['answer']]
     subject = row.get('subject', 'N/A')
+    k_to_store = None
     
     kwargs = {"client": client}
     if "rag" in answer_generation_function.__name__.lower():
         kwargs.update({"vector_store": vector_store, "k": k})
+        k_to_store = k
 
     # Retry logic
-    for i in range(2):
+    for i in range(5):
         try:
             model_answer = answer_generation_function(question, choices, **kwargs)
             break # Success! Exit the loop
@@ -29,7 +30,8 @@ def process_row(row, answer_generation_function, client, vector_store, k):
         'model_reasoning': model_answer[1],
         'correct_answer': correct_choice,
         'correct': model_answer[0] == correct_choice,
-        'subject': subject
+        'subject': subject,
+        'k': k_to_store
     }
 
 def evaluate_model_fast(df, answer_generation_function, client, debugging=False, vector_store=None, k=1, max_workers=10):
@@ -61,6 +63,4 @@ def evaluate_model_fast(df, answer_generation_function, client, debugging=False,
         print(f"Adjusted Accuracy: {accuracy:.2%}")
         
     return accuracy, results_df
-        
-
-    return accuracy, results_df
+    

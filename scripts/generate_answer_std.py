@@ -16,7 +16,7 @@ def generate_answer_std(question, choices, client):
     prompt = (
         f"Question: {question}\n\n"
         f"Choices:\n{formatted_choices}\n\n"
-        "Respond only with your final answer as one of the letters A, B, C, or D. Limit your reasoning to two sentences and provide it in the 'reasoning' field of the JSON response. Your final answer should be in the 'answer' field."
+        "Respond only with your final answer as one of the letters A, B, C, or D. Your final answer as one of the letters should be in the 'answer' field. Any other text should be in the 'reasoning' field."
     )
 
     # Use JSON mode to guarantee a parseable structure
