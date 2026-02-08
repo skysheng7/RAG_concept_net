@@ -168,14 +168,14 @@ def batch_eval(
                 # iterate through if we want to do 1-shot, 2-shot, 3-shot, 4-shot, 5-shot learning with different few shot examples
                 for shot_n in few_shot_range: 
                     example_string = import_datasets.create_few_shot_examples(subject, shot_n)
-                    prompt = prompt + example_string
+                    new_prompt = prompt + example_string
                     accuracy, results_df = evaluate_model_fast(
                         df,
                         generate_answer_cot,
                         client,
                         debugging=debugging,
                         max_workers=max_workers,
-                        prompt=prompt,
+                        prompt=new_prompt,
                         prompt_type=prompt_type,
                         shot_n=shot_n
                     )
