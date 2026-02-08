@@ -133,6 +133,8 @@ def batch_eval(
     for prompt_type in prompt_db.keys():
         if "rag" in prompt_type:
             total_tasks += len(datasets) * len(k_range)
+        elif "few_shot" in prompt_type:
+            total_tasks += len(datasets) * len(few_shot_range)
         else:
             total_tasks += len(datasets)
     
