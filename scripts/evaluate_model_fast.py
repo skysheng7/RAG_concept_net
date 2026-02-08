@@ -30,13 +30,14 @@ def process_row(
             model_answer = answer_generation_function(question, choices, **kwargs)
             break  # Success! Exit the loop
         except Exception as e:
-            # if it's because of rate limit, wait for 30 seconds and try again
+            # if it's because of rate limit, wait for 20 seconds and try again
             if "429" in str(e) or "quota" in str(e).lower():
-                time.sleep(30)
+                time.sleep(20)
             
             # Captures the specific error message as the reasoning
             error_msg = f"Attempt {i+1} failed: {str(e)}"
             model_answer = (f"Error", error_msg)
+            print(error_msg)
 
     # if this is standard prompt, there is no reasoning
     if isinstance(model_answer, (list, tuple)):
