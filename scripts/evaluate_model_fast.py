@@ -9,7 +9,7 @@ from generate_answer_rag import generate_answer_rag
 
 
 def process_row(
-    row, answer_generation_function, client, vector_store, k, prompt, prompt_type
+    row, answer_generation_function, client, vector_store, k, prompt, prompt_type, shot_n=None
 ):
     """Helper to process a single row for parallel execution."""
     question = row["question"]
@@ -53,6 +53,7 @@ def process_row(
         "k": k_to_store,
         "prompt_type": prompt_type,
         "prompt": prompt,
+        "shot_n": shot_n
     }
 
 
@@ -66,6 +67,7 @@ def evaluate_model_fast(
     max_workers=10,
     prompt=None,
     prompt_type=None,
+    shot_n=None,
 ):
     # Convert DF to list of dicts for faster iteration
     rows = df.to_dict("records")
@@ -83,6 +85,7 @@ def evaluate_model_fast(
                     k,
                     prompt,
                     prompt_type,
+                    shot_n,
                 ),
                 rows,
             )
@@ -119,6 +122,7 @@ def batch_eval(
     vector_store=None,
     max_workers=10,
     folder_path="../results",
+    few_shot_range=range(1, 6, 1)
 ):
     # load datasets (100 samples from each dataset)
     # Generate 100 samples from the mmlu datasets
@@ -158,6 +162,30 @@ def batch_eval(
                     folder_path=folder_path,
                 )
                 pbar.update(1)
+            elif "few_shot" in prompt_type: # few shot prompting
+                # iterate through if we want to do 1-shot, 2-shot, 3-shot, 4-shot, 5-shot learning with different few shot examples
+                for shot_n in few_shot_range: 
+                    example_string = import_datasets.create_few_shot_examples(subject, shot_n)
+                    prompt = prompt + example_string
+                    accuracy, results_df = evaluate_model_fast(
+                        df,
+                        generate_answer_cot,
+                        client,
+                        debugging=debugging,
+                        max_workers=max_workers,
+                        prompt=prompt,
+                        prompt_type=prompt_type,
+                        shot_n=shot_n
+                    )
+                    master_results_df = pd.concat(
+                        [master_results_df, results_df], ignore_index=True
+                    )
+                    general_utils.save_df_to_csv(
+                        results_df,
+                        f"results_df_{subject}_{prompt_type}_{shot_n}shot_learning.csv",
+                        folder_path=folder_path,
+                    )
+                    pbar.update(1)
             elif "cot" in prompt_type:  # chain-of-thought prompting with variations
                 if "persona" in prompt_type:
                     subject_name = subject.replace("_", " ")
