@@ -36,7 +36,7 @@ def generate_answer(context, question, choices, client):
     return data["answer"], data["reasoning"]
 
 
-def evaluate_model_rag(df, vector_store, answer_generation_function, embedding_model, client, k=1, debugging=False):
+def evaluate_model(df, vector_store, answer_generation_function, embedding_model, client, k=1, debugging=False):
     retriever = create_retriever(vector_store, k=k, embedding_model=embedding_model)
 
     # get context for each question
