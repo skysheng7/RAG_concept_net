@@ -12,59 +12,35 @@ def analyse_errors(input_path, output_path):
         4: "Misunderstanding of the question",
         5: "Logic error",
         6: "LLM error",
+        7: "Reasoning doesn't find an answer",
+        8: "Chose answer not consistent with reasoning"
     }
 
     error_analysis = pd.read_excel(input_path, sheet_name="selected_errors")
+    error_analysis = error_analysis.fillna(0)
+
 
     error_counts = (
         error_analysis
-        .groupby(["subject", "prompt_type"])["Error Category"]
+        .groupby(["prompt_type", "shot_n", "k"])["Error Category"]
         .value_counts()
-    )
+    ).to_frame(name='count')
 
-    subjects = error_analysis["subject"].unique()
-    prompt_type_order = ["standard", "cot", "rag"]
-    prompt_types = [pt for pt in prompt_type_order if pt in error_analysis["prompt_type"].unique()]
-    categories = sorted(set(error_analysis["Error Category"].unique()).union({5}))
-
-    full_index = pd.MultiIndex.from_product(
-        [subjects, prompt_types, categories],
-        names=["subject", "prompt_type", "Error Category"]
-    )
-
-    error_grouped = (
+    error_counts["percentage"] = (
         error_counts
-        .rename("count")
-        .reindex(full_index, fill_value=0)
-        .to_frame()
-    )
-
-    error_grouped["percentage"] = (
-        error_grouped
-        .groupby(level=[0, 1])["count"]
+        .groupby(level=[0, 1, 2])["count"]
         .transform(lambda x: round(100 * x / x.sum(), 2))
     )
 
-    error_pivot = error_grouped.pivot_table(
-        index=["subject", "prompt_type"],
+    error_pivot = error_counts.pivot_table(
+        index=["prompt_type", "shot_n", "k"],
         columns="Error Category",
         values="percentage",
         fill_value=0
     )
 
-    prompt_type_order = ["standard", "cot", "rag"]
-    subjects = error_pivot.index.get_level_values("subject").unique()
-    prompt_types = [
-        pt for pt in prompt_type_order
-        if pt in error_pivot.index.get_level_values("prompt_type").unique()
-    ]
-
-    error_pivot = error_pivot.reindex(
-        pd.MultiIndex.from_product(
-            [subjects, prompt_types],
-            names=["subject", "prompt_type"]
-        )
-    )
+    prompt_type_order = ["standard", "cot", "cot_few_shot", "rag", "rag_optional"]
+    error_pivot = error_pivot.reindex(prompt_type_order, level=0)
 
     error_pivot.to_excel(output_path)
     return error_pivot
@@ -101,6 +77,6 @@ def analyse_errors(input_path, output_path):
 # plt.show()
 
 if __name__ == "__main__":
-    input_filepath = "../results/round1/model_error_analysis.xlsx"
-    output_filepath = "../results/round1/error_percentages.xlsx"
-    analyse_errors(input_filepath, output_filepath)
+    input_path = "../results/round1/model_error_analysis.xlsx"
+    output_path = "../results/round1/error_percentages.xlsx"
+    e = analyse_errors(input_path, output_path)
