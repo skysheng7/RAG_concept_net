@@ -134,3 +134,130 @@ def create_accuracy_boxplots_all_prompts(
         print(f"Figure saved to: {output_path}")
     
     return fig, axes
+
+
+def create_accuracy_boxplots_few_shot(
+    data_df,
+    dataset_names,
+    output_path=None,
+    figsize=(14, 14),
+    dpi=300
+):
+    """
+    Creates boxplots comparing few-shot learning performance (0-shot through 5-shot).
+    0-shot uses 'cot' prompt type, 1-5 shot use 'cot_few_shot' prompt type.
+    
+    Parameters:
+    -----------
+    data_df : pd.DataFrame
+        DataFrame containing accuracy data with columns: prompt_type, subject, shot_n, round, accuracy
+    dataset_names : list
+        List of dataset names to plot
+    output_path : str, optional
+        Path to save the figure
+    figsize : tuple, optional
+        Figure size (width, height)
+    dpi : int, optional
+        Resolution for saved figure
+    """
+    # Set up the color palette for rounds
+    color_palette = sns.color_palette("Accent")
+    
+    # Filter data to only include 'cot' and 'cot_few_shot' prompt types
+    filtered_df = data_df[data_df['prompt_type'].isin(['cot', 'cot_few_shot'])].copy()
+    
+    # Create figure with vertically stacked subplots
+    fig, axes = plt.subplots(len(dataset_names), 1, figsize=figsize, sharex=True)
+    
+    # Label for each subplot
+    subplot_labels = [f'({chr(65 + i)})' for i in range(len(dataset_names))]
+    
+    # Define shot_n order (0 through 5)
+    shot_order = [0, 1, 2, 3, 4, 5]
+    shot_labels = [f'{i}-shot' for i in shot_order]
+    
+    for idx, (ax, dataset, label) in enumerate(zip(axes, dataset_names, subplot_labels)):
+        # Filter data for this dataset
+        dataset_df = filtered_df[filtered_df['subject'] == dataset].copy()
+        
+        # Create box plot data for all shot_n values
+        box_data = []
+        for shot_n in shot_order:
+            shot_data = dataset_df[dataset_df['shot_n'] == shot_n]['accuracy'].values
+            box_data.append(shot_data)
+        
+        # Create box plot (transparent light grey)
+        box_parts = ax.boxplot(
+            box_data,
+            positions=range(len(shot_order)),
+            widths=0.8,
+            patch_artist=True,
+            showfliers=False,
+            boxprops=dict(facecolor='lightgrey', alpha=0.6, edgecolor='grey'),
+            medianprops=dict(color='grey', linewidth=2.5),
+            whiskerprops=dict(color='grey', linewidth=2.5),
+            capprops=dict(color='grey', linewidth=2.5)
+        )
+        
+        # Add individual data points with jitter
+        x_positions = []
+        y_values = []
+        colors = []
+        
+        for i, shot_n in enumerate(shot_order):
+            shot_data = dataset_df[dataset_df['shot_n'] == shot_n]
+            
+            if len(shot_data) == 0:
+                continue
+            
+            # Add jitter to x positions
+            n_points = len(shot_data)
+            jitter = np.random.uniform(-0.3, 0.3, n_points)
+            x_pos = np.full(n_points, i) + jitter
+            
+            x_positions.extend(x_pos)
+            y_values.extend(shot_data['accuracy'].values)
+            
+            # Map round numbers to colors
+            for round_num in shot_data['round'].values:
+                colors.append(color_palette[int(round_num) - 1])
+        
+        # Scatter plot for individual points
+        ax.scatter(x_positions, y_values, c=colors, alpha=0.7, s=80, edgecolors='black', linewidth=0.4, zorder=3)
+        
+        # Formatting
+        ax.set_ylabel('Accuracy', fontsize=15, fontweight='bold', labelpad=10)
+        ax.set_title(f'{label} {dataset.replace("_", " ").title()}', fontsize=20, fontweight='bold', loc='left')
+        ax.set_ylim(0.75, 1.0)
+        ax.grid(axis='y', alpha=0.3, linestyle='--')
+        ax.set_axisbelow(True)
+        
+        # Set x-axis labels only for the bottom plot
+        if idx == len(dataset_names) - 1:  # Bottom plot
+            ax.set_xticks(range(len(shot_order)))
+            ax.set_xticklabels(shot_labels, ha='center', fontsize=17)
+            ax.set_xlabel('Few-shot Learning', fontsize=15, fontweight='bold', labelpad=10)
+        else:
+            ax.set_xticks(range(len(shot_order)))
+            ax.set_xticklabels([])
+    
+    # Create custom legend for rounds
+    legend_elements = [
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color_palette[i], 
+                   markersize=8, label=f'Round {i+1}', markeredgecolor='black', markeredgewidth=0.5)
+        for i in range(5)
+    ]
+    
+    # Add legend to the top subplot
+    axes[0].legend(handles=legend_elements, loc='upper right', ncol=5, frameon=True, fontsize=10)
+    
+    # Adjust layout
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.2)
+    
+    # Save figure if output path is provided
+    if output_path:
+        plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+        print(f"Figure saved to: {output_path}")
+    
+    return fig, axes
