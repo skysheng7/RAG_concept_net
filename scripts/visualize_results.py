@@ -261,3 +261,133 @@ def create_accuracy_boxplots_few_shot(
         print(f"Figure saved to: {output_path}")
     
     return fig, axes
+
+
+def create_accuracy_boxplots_rag_k(
+    data_df,
+    dataset_names,
+    prompt_type='rag',
+    output_path=None,
+    figsize=(14, 14),
+    dpi=300
+):
+    """
+    Creates boxplots comparing RAG performance across different k values.
+    
+    Parameters:
+    -----------
+    data_df : pd.DataFrame
+        DataFrame containing accuracy data with columns: prompt_type, subject, k, round, accuracy
+    dataset_names : list
+        List of dataset names to plot
+    prompt_type : str, optional
+        Either 'rag' or 'rag_optional' to filter the data
+    output_path : str, optional
+        Path to save the figure
+    figsize : tuple, optional
+        Figure size (width, height)
+    dpi : int, optional
+        Resolution for saved figure
+    """
+    # Set up the color palette for rounds
+    color_palette = sns.color_palette("Accent")
+    
+    # Filter data to only include specified prompt type
+    filtered_df = data_df[data_df['prompt_type'] == prompt_type].copy()
+    
+    # Create figure with vertically stacked subplots
+    fig, axes = plt.subplots(len(dataset_names), 1, figsize=figsize, sharex=True)
+    
+    # Label for each subplot
+    subplot_labels = [f'({chr(65 + i)})' for i in range(len(dataset_names))]
+    
+    # Get unique k values and sort them
+    k_values = sorted(filtered_df['k'].unique())
+    
+    for idx, (ax, dataset, label) in enumerate(zip(axes, dataset_names, subplot_labels)):
+        # Filter data for this dataset
+        dataset_df = filtered_df[filtered_df['subject'] == dataset].copy()
+        
+        # Create box plot data for all k values
+        box_data = []
+        for k in k_values:
+            k_data = dataset_df[dataset_df['k'] == k]['accuracy'].values
+            box_data.append(k_data)
+        
+        # Create box plot (transparent light grey)
+        box_parts = ax.boxplot(
+            box_data,
+            positions=range(len(k_values)),
+            widths=0.8,
+            patch_artist=True,
+            showfliers=False,
+            boxprops=dict(facecolor='lightgrey', alpha=0.6, edgecolor='grey'),
+            medianprops=dict(color='grey', linewidth=2.5),
+            whiskerprops=dict(color='grey', linewidth=2.5),
+            capprops=dict(color='grey', linewidth=2.5)
+        )
+        
+        # Add individual data points with jitter
+        x_positions = []
+        y_values = []
+        colors = []
+        
+        for i, k in enumerate(k_values):
+            k_data = dataset_df[dataset_df['k'] == k]
+            
+            if len(k_data) == 0:
+                continue
+            
+            # Add jitter to x positions
+            n_points = len(k_data)
+            jitter = np.random.uniform(-0.3, 0.3, n_points)
+            x_pos = np.full(n_points, i) + jitter
+            
+            x_positions.extend(x_pos)
+            y_values.extend(k_data['accuracy'].values)
+            
+            # Map round numbers to colors
+            for round_num in k_data['round'].values:
+                colors.append(color_palette[int(round_num) - 1])
+        
+        # Scatter plot for individual points
+        ax.scatter(x_positions, y_values, c=colors, alpha=0.7, s=80, edgecolors='black', linewidth=0.4, zorder=3)
+        
+        # Formatting
+        ax.set_ylabel('Accuracy', fontsize=15, fontweight='bold', labelpad=10)
+        ax.set_title(f'{label} {dataset.replace("_", " ").title()}', fontsize=20, fontweight='bold', loc='left')
+        ax.set_ylim(0.7, 1.0)
+        ax.grid(axis='y', alpha=0.3, linestyle='--')
+        ax.set_axisbelow(True)
+        
+        # Set x-axis labels only for the bottom plot
+        if idx == len(dataset_names) - 1:  # Bottom plot
+            ax.set_xticks(range(len(k_values)))
+            ax.set_xticklabels([f'k={k}' for k in k_values], ha='center', fontsize=17)
+            ax.set_xlabel('Number of Retrieved Documents (k)', fontsize=15, fontweight='bold', labelpad=10)
+        else:
+            ax.set_xticks(range(len(k_values)))
+            ax.set_xticklabels([])
+    
+    # Create custom legend for rounds
+    legend_elements = [
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color_palette[i], 
+                   markersize=8, label=f'Round {i+1}', markeredgecolor='black', markeredgewidth=0.5)
+        for i in range(5)
+    ]
+    
+    # Add legend to the top subplot
+    prompt_label = 'RAG' if prompt_type == 'rag' else 'RAG (Optional)'
+    axes[0].legend(handles=legend_elements, loc='upper right', ncol=5, frameon=True, fontsize=10,
+                   title=f'{prompt_label} Performance', title_fontsize=11)
+    
+    # Adjust layout
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.2)
+    
+    # Save figure if output path is provided
+    if output_path:
+        plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+        print(f"Figure saved to: {output_path}")
+    
+    return fig, axes
